@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, CirclePlay, ClipboardCheck, ListVideo, Lock, PlayCircle, RefreshCw, RotateCcw, Send } from "lucide-react";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, CirclePlay, CircleX, ClipboardCheck, ListVideo, Lock, PlayCircle, RefreshCw, RotateCcw, Send } from "lucide-react";
 import Hls from "hls.js";
 
 type Lesson = {
@@ -12,6 +12,7 @@ type Lesson = {
   quiz: null | {
     passingScore: number;
     questions: Array<{ id: string; prompt: string; options: string[] }>;
+    lastAttempt: QuizResult | null;
   };
 };
 
@@ -29,6 +30,12 @@ type QuizResult = {
   correct: number;
   total: number;
   passingScore: number;
+  attemptedAt?: string | null;
+  answers: Array<{
+    questionId: string;
+    optionIndex: number;
+    isCorrect: boolean;
+  }>;
 };
 
 export default function VideoPlayer({ videos, initialCompletedVideoIds, initialWatchedVideoIds, isAdmin, watermark }: VideoPlayerProps) {
@@ -55,7 +62,11 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, initialW
   const [submittingQuiz, setSubmittingQuiz] = useState(false);
   const selectedIndex = videos.findIndex((video) => video.id === selectedId);
   const selected = videos[selectedIndex] || videos[0];
-  const selectedQuizReady = Boolean(selected?.quiz && (watchedIds.includes(selected.id) || completedIds.includes(selected.id)));
+  const selectedQuizReady = Boolean(selected?.quiz && (
+    isAdmin
+    || watchedIds.includes(selected.id)
+    || selected.quiz.lastAttempt
+  ));
 
   function isUnlocked(index: number) {
     return isAdmin || videos.slice(0, index).every((video) => completedIds.includes(video.id));
@@ -64,9 +75,9 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, initialW
   useEffect(() => {
     setQuizVisible(selectedQuizReady);
     setQuizAnswers({});
-    setQuizResult(null);
+    setQuizResult(selected?.quiz?.lastAttempt || null);
     setQuizError("");
-  }, [selectedId, selectedQuizReady]);
+  }, [selectedId, selectedQuizReady, selected?.quiz?.lastAttempt]);
 
   useEffect(() => {
     if (!selected?.id) return;
@@ -298,7 +309,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, initialW
         {selected?.description ? <p className="lesson-description">{selected.description}</p> : null}
         {error ? <p className="notice danger">{error}</p> : null}
 
-        {selected?.quiz && !completedIds.includes(selected.id) ? (
+        {selected?.quiz ? (
           quizVisible ? (
             <form className="lesson-quiz" onSubmit={submitQuiz}>
               <div className="lesson-quiz-header">
@@ -311,18 +322,45 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, initialW
               </div>
 
               {quizResult ? (
-                <div className={`quiz-result ${quizResult.passed ? "is-passed" : "is-failed"}`} role="status">
-                  {quizResult.passed ? <CheckCircle2 size={26} /> : <RotateCcw size={26} />}
-                  <div>
-                    <strong>{quizResult.passed ? "Evaluación aprobada" : "Aún no alcanzas la nota"}</strong>
-                    <span>{quizResult.score}% · {quizResult.correct} de {quizResult.total} respuestas correctas</span>
-                  </div>
-                  {!quizResult.passed ? (
+                <>
+                  <div className={`quiz-result ${quizResult.passed ? "is-passed" : "is-failed"}`} role="status">
+                    {quizResult.passed ? <CheckCircle2 size={26} /> : <RotateCcw size={26} />}
+                    <div>
+                      <strong>{quizResult.passed ? "Evaluación aprobada" : "Aún no alcanzas la nota"}</strong>
+                      <span>{quizResult.score}% · {quizResult.correct} de {quizResult.total || selected.quiz.questions.length} respuestas correctas</span>
+                    </div>
                     <button className="button ghost" type="button" onClick={retryQuiz}>
-                      <RotateCcw size={16} /> Intentar de nuevo
+                      <RotateCcw size={16} /> {quizResult.passed ? "Responder nuevamente" : "Intentar de nuevo"}
                     </button>
-                  ) : null}
-                </div>
+                  </div>
+
+                  {quizResult.answers.length ? (
+                    <div className="quiz-answer-review" aria-label="Revisión de respuestas">
+                      {selected.quiz.questions.map((question, questionIndex) => {
+                        const answer = quizResult.answers.find((item) => item.questionId === question.id);
+                        const answerText = answer === undefined ? "Sin respuesta registrada" : question.options[answer.optionIndex];
+                        return (
+                          <article className="quiz-review-item" key={question.id}>
+                            <div className="quiz-review-question">
+                              <span>{questionIndex + 1}</span>
+                              <strong>{question.prompt}</strong>
+                            </div>
+                            <div className={`quiz-review-answer ${answer?.isCorrect ? "is-correct" : "is-incorrect"}`}>
+                              {answer?.isCorrect ? <CheckCircle2 size={19} /> : <CircleX size={19} />}
+                              <div>
+                                <small>Tu respuesta</small>
+                                <strong>{answerText}</strong>
+                              </div>
+                              <span>{answer?.isCorrect ? "Correcta" : "Incorrecta"}</span>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="notice compact">Este resultado es anterior a la revisión detallada. Puedes responder nuevamente para ver tus respuestas.</p>
+                  )}
+                </>
               ) : (
                 <>
                   <div className="student-question-list">
@@ -361,8 +399,6 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, initialW
               <Lock size={16} /> Finaliza el video para habilitar la evaluación de esta lección.
             </p>
           )
-        ) : selected?.quiz && completedIds.includes(selected.id) ? (
-          <p className="notice compact quiz-passed-note"><CheckCircle2 size={16} /> Evaluación aprobada.</p>
         ) : null}
 
         <div className="lesson-navigation">

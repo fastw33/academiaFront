@@ -20,6 +20,15 @@ type DashboardData = {
       quiz: null | {
         passingScore: number;
         questions: Array<{ id: string; prompt: string; options: string[] }>;
+        lastAttempt: null | {
+          score: number;
+          passed: boolean;
+          correct: number;
+          total: number;
+          passingScore: number;
+          attemptedAt: string | null;
+          answers: Array<{ questionId: string; optionIndex: number; isCorrect: boolean }>;
+        };
       };
     }>;
   };
