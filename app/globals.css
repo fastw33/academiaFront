@@ -556,6 +556,24 @@ a:focus-visible {
   background: #0a0b0c;
 }
 
+.video-buffering {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 6px;
+  padding: 9px 12px;
+  background: rgba(10, 11, 12, 0.76);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.76rem;
+  font-weight: 700;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 .video-placeholder {
   display: grid;
   width: 100%;
@@ -754,32 +772,25 @@ a:focus-visible {
   position: absolute;
   z-index: 2;
   inset: 0 0 58px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(0, 1fr));
-  place-items: center;
-  overflow: hidden;
-  padding: 20px;
   pointer-events: none;
-  animation: watermark-drift 16s ease-in-out infinite;
 }
 
 .watermark-layer span {
-  max-width: 92%;
-  transform: rotate(-16deg);
-  color: rgba(255, 255, 255, 0.34);
-  font-family: var(--font-title);
-  font-size: clamp(0.56rem, 0.72vw, 0.76rem);
-  font-weight: 700;
-  line-height: 1.25;
-  text-align: center;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  border-radius: 4px;
+  padding: 4px 7px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 0.62rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
   user-select: none;
-}
-
-@keyframes watermark-drift {
-  0%, 100% { transform: translate3d(-6px, 4px, 0); }
-  50% { transform: translate3d(10px, -7px, 0); }
+  white-space: nowrap;
 }
 
 .notice {
@@ -1335,11 +1346,6 @@ a:focus-visible {
 
   .watermark-layer {
     bottom: 48px;
-    grid-template-columns: 1fr;
-  }
-
-  .watermark-layer span:nth-child(even) {
-    display: none;
   }
 
   .brand > img {
@@ -1411,12 +1417,6 @@ a:focus-visible {
 
   .field-days {
     max-width: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .watermark-layer {
-    animation: none;
   }
 }
 

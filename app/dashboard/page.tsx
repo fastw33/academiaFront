@@ -76,7 +76,7 @@ export default async function DashboardPage() {
                 }))}
                 initialCompletedVideoIds={completedVideoIds}
                 isAdmin={user.role === "admin"}
-                watermark={`${user.email} · acceso personal`}
+                watermark={user.email}
               />
             ) : (
               <div className="notice danger">

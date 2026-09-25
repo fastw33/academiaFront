@@ -19,7 +19,6 @@ type VideoPlayerProps = {
 
 export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin, watermark }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [watermarkTime, setWatermarkTime] = useState("");
   const [completedIds, setCompletedIds] = useState(initialCompletedVideoIds);
   const firstAvailable = useMemo(() => {
     if (isAdmin) return videos[0]?.id || "";
@@ -31,6 +30,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
   const [src, setSrc] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [buffering, setBuffering] = useState(false);
   const [completing, setCompleting] = useState(false);
   const selectedIndex = videos.findIndex((video) => video.id === selectedId);
   const selected = videos[selectedIndex] || videos[0];
@@ -45,6 +45,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
 
     async function loadVideo() {
       setLoading(true);
+      setBuffering(false);
       setError("");
       setSrc("");
       const response = await fetch(`/api/video/play?videoId=${encodeURIComponent(selected.id)}`, {
@@ -61,6 +62,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
       }
 
       setSrc(payload.url);
+      setBuffering(true);
     }
 
     loadVideo().catch((loadError) => {
@@ -78,17 +80,6 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
 
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, []);
-
-  useEffect(() => {
-    const formatter = new Intl.DateTimeFormat("es-CO", {
-      dateStyle: "short",
-      timeStyle: "short",
-    });
-    const updateTime = () => setWatermarkTime(formatter.format(new Date()));
-    updateTime();
-    const interval = window.setInterval(updateTime, 60_000);
-    return () => window.clearInterval(interval);
   }, []);
 
   async function completeLesson() {
@@ -145,13 +136,26 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
                 controls
                 controlsList="nodownload nofullscreen noplaybackrate noremoteplayback"
                 disablePictureInPicture
+                preload="metadata"
                 playsInline
+                onCanPlay={() => setBuffering(false)}
                 onEnded={completeLesson}
+                onError={() => {
+                  setBuffering(false);
+                  setError("El formato del video no es compatible con este navegador. Usa MP4 con video H.264 y audio AAC.");
+                }}
+                onPlaying={() => setBuffering(false)}
+                onStalled={() => setBuffering(true)}
+                onWaiting={() => setBuffering(true)}
               />
+              {buffering ? (
+                <div className="video-buffering" role="status">
+                  <RefreshCw className="spin" size={24} />
+                  <span>Cargando video</span>
+                </div>
+              ) : null}
               <div className="watermark-layer" aria-hidden="true">
-                {Array.from({ length: 6 }, (_, index) => (
-                  <span key={index}>{watermark}{watermarkTime ? ` · ${watermarkTime}` : ""}</span>
-                ))}
+                <span>{watermark}</span>
               </div>
             </>
           ) : (
