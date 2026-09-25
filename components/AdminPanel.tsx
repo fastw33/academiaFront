@@ -45,12 +45,14 @@ function formatBytes(bytes: number) {
 
 function uploadFile(
   url: string,
+  token: string,
   file: File,
   onProgress: (loaded: number, phase: UploadProgress["phase"]) => void
 ) {
   return new Promise<void>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("PUT", url);
+    request.setRequestHeader("Authorization", `Bearer ${token}`);
     request.setRequestHeader("Content-Type", file.type || "video/mp4");
 
     request.upload.onprogress = (event) => {
@@ -126,7 +128,8 @@ export default function AdminPanel({ course }: AdminPanelProps) {
         const signedPayload = await signed.json().catch(() => null);
         if (!signed.ok) throw new Error(signedPayload?.error || `No se pudo preparar ${file.name}.`);
 
-        await uploadFile(signedPayload.url, file, updateProgress);
+        if (!signedPayload?.url || !signedPayload?.token) throw new Error(`No se pudo autorizar la subida de ${file.name}.`);
+        await uploadFile(signedPayload.url, signedPayload.token, file, updateProgress);
         completedBytes += file.size;
 
         uploaded.push({
