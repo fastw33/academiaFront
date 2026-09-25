@@ -66,7 +66,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
           headers: { "Content-Type": file.type || "video/mp4" },
           body: file,
         });
-        if (!upload.ok) throw new Error(`MinIO rechazó la subida de ${file.name}.`);
+        if (!upload.ok) throw new Error(`No se pudo subir ${file.name}.`);
 
         uploaded.push({
           id: signedPayload.id,

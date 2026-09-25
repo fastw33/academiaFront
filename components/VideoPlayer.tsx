@@ -158,7 +158,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
         </div>
 
         <p className="notice compact protected-note">
-          <Lock size={16} /> El enlace vence rápidamente y cada lección se habilita en orden.
+          <Lock size={16} /> Cada reproducción se valida y las lecciones se habilitan en orden.
         </p>
       </div>
 
