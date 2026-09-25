@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ArrowDown, ArrowUp, Film, Save, Trash2, UploadCloud } from "lucide-react";
+import { ArrowDown, ArrowUp, Film, Gauge, RefreshCw, Save, Trash2, UploadCloud } from "lucide-react";
 
 type CourseVideo = {
   id: string;
@@ -28,7 +28,15 @@ type UploadProgress = {
   loadedBytes: number;
   totalBytes: number;
   percent: number;
-  phase: "preparing" | "uploading" | "processing";
+  phase: "preparing" | "uploading" | "processing" | "optimizing";
+};
+
+type OptimizationJob = {
+  status: "queued" | "processing" | "uploading" | "done" | "failed";
+  progress: number;
+  optimizedKey: string | null;
+  optimizedBytes: number | null;
+  error: string | null;
 };
 
 function titleFromFilename(filename: string) {
@@ -41,6 +49,40 @@ function titleFromFilename(filename: string) {
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(0.1, bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function optimizeVideo(
+  video: Pick<CourseVideo, "id" | "s3Key">,
+  originalBytes: number | undefined,
+  onProgress: (progress: number) => void
+) {
+  let response = await fetch("/api/admin/videos/optimize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: video.id, key: video.s3Key, originalBytes }),
+  });
+  let payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(payload?.error || "No se pudo iniciar la optimización.");
+  let job = payload.job as OptimizationJob;
+
+  while (job.status !== "done" && job.status !== "failed") {
+    onProgress(job.progress);
+    await wait(1500);
+    response = await fetch(`/api/admin/videos/${encodeURIComponent(video.id)}/optimize`, { cache: "no-store" });
+    payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(payload?.error || "No se pudo consultar la optimización.");
+    job = payload.job as OptimizationJob;
+  }
+
+  if (job.status === "failed" || !job.optimizedKey) {
+    throw new Error(job.error || "No se pudo optimizar el video.");
+  }
+  onProgress(100);
+  return job;
 }
 
 function uploadFile(
@@ -85,6 +127,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [saving, setSaving] = useState(false);
+  const [optimizingVideo, setOptimizingVideo] = useState<{ id: string; progress: number } | null>(null);
 
   async function uploadVideos(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -106,15 +149,18 @@ export default function AdminPanel({ course }: AdminPanelProps) {
 
     try {
       for (const [index, file] of files.entries()) {
-        const updateProgress = (loaded: number, phase: UploadProgress["phase"]) => {
+        const updateProgress = (loaded: number, phase: UploadProgress["phase"], optimizationPercent = 0) => {
           const loadedBytes = Math.min(totalBytes, completedBytes + loaded);
+          const percent = phase === "optimizing"
+            ? Math.round(((index + optimizationPercent / 100) / files.length) * 100)
+            : Math.round((loadedBytes / totalBytes) * 100);
           setUploadProgress({
             fileName: file.name,
             fileIndex: index + 1,
             totalFiles: files.length,
             loadedBytes,
             totalBytes,
-            percent: Math.round((loadedBytes / totalBytes) * 100),
+            percent,
             phase,
           });
         };
@@ -130,6 +176,12 @@ export default function AdminPanel({ course }: AdminPanelProps) {
 
         if (!signedPayload?.url || !signedPayload?.token) throw new Error(`No se pudo autorizar la subida de ${file.name}.`);
         await uploadFile(signedPayload.url, signedPayload.token, file, updateProgress);
+        updateProgress(file.size, "optimizing", 0);
+        const optimized = await optimizeVideo(
+          { id: signedPayload.id, s3Key: signedPayload.key },
+          file.size,
+          (progress) => updateProgress(file.size, "optimizing", progress)
+        );
         completedBytes += file.size;
 
         uploaded.push({
@@ -137,7 +189,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
           title: titleFromFilename(file.name),
           description: "",
           durationLabel: "",
-          s3Key: signedPayload.key,
+          s3Key: optimized.optimizedKey || signedPayload.key,
         });
       }
 
@@ -149,6 +201,27 @@ export default function AdminPanel({ course }: AdminPanelProps) {
     } finally {
       setUploading(false);
       setUploadProgress(null);
+    }
+  }
+
+  async function optimizeExistingVideo(video: CourseVideo) {
+    if (optimizingVideo || video.s3Key.endsWith("/master.m3u8")) return;
+    setError("");
+    setMessage("");
+    setOptimizingVideo({ id: video.id, progress: 0 });
+    try {
+      const job = await optimizeVideo(video, undefined, (progress) => {
+        setOptimizingVideo({ id: video.id, progress });
+      });
+      setVideos((current) => current.map((item) => (
+        item.id === video.id ? { ...item, s3Key: job.optimizedKey || item.s3Key } : item
+      )));
+      const reduction = job.optimizedBytes ? ` El nuevo streaming ocupa ${formatBytes(job.optimizedBytes)}.` : "";
+      setMessage(`Video convertido a streaming adaptativo.${reduction}`);
+    } catch (optimizationError) {
+      setError(optimizationError instanceof Error ? optimizationError.message : "No se pudo optimizar el video.");
+    } finally {
+      setOptimizingVideo(null);
     }
   }
 
@@ -227,6 +300,8 @@ export default function AdminPanel({ course }: AdminPanelProps) {
                 <span>
                   {uploadProgress.phase === "preparing"
                     ? "Preparando"
+                    : uploadProgress.phase === "optimizing"
+                      ? "Generando streaming"
                     : uploadProgress.phase === "processing"
                       ? "Confirmando guardado"
                       : "Subiendo"}{" "}
@@ -247,7 +322,9 @@ export default function AdminPanel({ course }: AdminPanelProps) {
               <div className="upload-progress__meta">
                 <span>Archivo {uploadProgress.fileIndex} de {uploadProgress.totalFiles}</span>
                 <span>
-                  {uploadProgress.phase === "processing"
+                  {uploadProgress.phase === "optimizing"
+                    ? "Creando calidades 360p, 720p y 1080p."
+                    : uploadProgress.phase === "processing"
                     ? "Carga enviada. MinIO está finalizando el archivo."
                     : `${formatBytes(uploadProgress.loadedBytes)} de ${formatBytes(uploadProgress.totalBytes)}`}
                 </span>
@@ -302,6 +379,16 @@ export default function AdminPanel({ course }: AdminPanelProps) {
                   </div>
                 </div>
                 <div className="lesson-admin-actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => optimizeExistingVideo(video)}
+                    disabled={Boolean(optimizingVideo) || video.s3Key.endsWith("/master.m3u8")}
+                    aria-label={`Optimizar ${video.title} para streaming`}
+                    title={video.s3Key.endsWith("/master.m3u8") ? "Streaming adaptativo listo" : "Optimizar para conexiones lentas"}
+                  >
+                    {optimizingVideo?.id === video.id ? <RefreshCw className="spin" size={17} /> : <Gauge size={17} />}
+                  </button>
                   <button className="icon-button" type="button" onClick={() => moveVideo(index, -1)} disabled={index === 0} aria-label={`Subir ${video.title}`} title="Subir en el orden">
                     <ArrowUp size={17} />
                   </button>
@@ -312,6 +399,11 @@ export default function AdminPanel({ course }: AdminPanelProps) {
                     <Trash2 size={17} />
                   </button>
                 </div>
+                {optimizingVideo?.id === video.id ? (
+                  <span className="lesson-optimization-status" role="status">
+                    Preparando streaming {optimizingVideo.progress}%
+                  </span>
+                ) : null}
               </article>
             ))}
 

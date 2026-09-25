@@ -1001,6 +1001,13 @@ a:focus-visible {
   gap: 6px;
 }
 
+.lesson-optimization-status {
+  grid-column: 2 / -1;
+  color: var(--blue);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .save-course-button {
   width: fit-content;
 }

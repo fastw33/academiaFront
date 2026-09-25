@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, CirclePlay, ListVideo, Lock, PlayCircle, RefreshCw } from "lucide-react";
+import Hls from "hls.js";
 
 type Lesson = {
   id: string;
@@ -28,6 +29,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
   }, [completedIds, isAdmin, videos]);
   const [selectedId, setSelectedId] = useState(firstAvailable);
   const [src, setSrc] = useState("");
+  const [playbackType, setPlaybackType] = useState<"file" | "hls">("file");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [buffering, setBuffering] = useState(false);
@@ -48,6 +50,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
       setBuffering(false);
       setError("");
       setSrc("");
+      setPlaybackType("file");
       const response = await fetch(`/api/video/play?videoId=${encodeURIComponent(selected.id)}`, {
         cache: "no-store",
         signal: controller.signal,
@@ -61,6 +64,7 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
         return;
       }
 
+      setPlaybackType(payload.type === "hls" ? "hls" : "file");
       setSrc(payload.url);
       setBuffering(true);
     }
@@ -72,6 +76,60 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
     });
     return () => controller.abort();
   }, [selected?.id]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !src || playbackType !== "hls") return;
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+      video.load();
+      return () => {
+        video.removeAttribute("src");
+        video.load();
+      };
+    }
+
+    if (!Hls.isSupported()) {
+      setBuffering(false);
+      setError("Este navegador no permite reproducción HLS.");
+      return;
+    }
+
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      capLevelToPlayerSize: true,
+      startLevel: 0,
+      maxBufferLength: 300,
+      maxMaxBufferLength: 600,
+      maxBufferSize: 220 * 1024 * 1024,
+      backBufferLength: 60,
+      abrEwmaDefaultEstimate: 1_200_000,
+      abrBandWidthFactor: 0.8,
+      abrBandWidthUpFactor: 0.65,
+      manifestLoadingMaxRetry: 4,
+      fragLoadingMaxRetry: 6,
+    });
+    hls.loadSource(src);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal) return;
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+        hls.startLoad();
+        return;
+      }
+      if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+        hls.recoverMediaError();
+        return;
+      }
+      setBuffering(false);
+      setError("No se pudo continuar la reproducción adaptativa.");
+      hls.destroy();
+    });
+
+    return () => hls.destroy();
+  }, [playbackType, src]);
 
   useEffect(() => {
     function onVisibilityChange() {
@@ -131,12 +189,12 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
               <video
                 key={selected.id}
                 ref={videoRef}
-                src={src}
+                src={playbackType === "file" ? src : undefined}
                 title={selected.title}
                 controls
                 controlsList="nodownload nofullscreen noplaybackrate noremoteplayback"
                 disablePictureInPicture
-                preload="metadata"
+                preload="auto"
                 playsInline
                 onCanPlay={() => setBuffering(false)}
                 onEnded={completeLesson}
