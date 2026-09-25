@@ -1,0 +1,239 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { ArrowDown, ArrowUp, Film, Save, Trash2, UploadCloud } from "lucide-react";
+
+type CourseVideo = {
+  id: string;
+  title: string;
+  description: string;
+  s3Key: string;
+  durationLabel: string;
+};
+
+type Course = {
+  title: string;
+  description: string;
+  videos: CourseVideo[];
+};
+
+type AdminPanelProps = {
+  course: Course | null;
+};
+
+function titleFromFilename(filename: string) {
+  return filename
+    .replace(/\.[^.]+$/, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+export default function AdminPanel({ course }: AdminPanelProps) {
+  const [videos, setVideos] = useState<CourseVideo[]>(course?.videos || []);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function uploadVideos(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const files = form.getAll("videos").filter((file): file is File => file instanceof File && file.size > 0);
+
+    if (!files.length) {
+      setError("Selecciona uno o más videos.");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setUploading(true);
+    const uploaded: CourseVideo[] = [];
+
+    try {
+      for (const file of files) {
+        const signed = await fetch("/api/admin/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, contentType: file.type || "video/mp4" }),
+        });
+        const signedPayload = await signed.json().catch(() => null);
+        if (!signed.ok) throw new Error(signedPayload?.error || `No se pudo preparar ${file.name}.`);
+
+        const upload = await fetch(signedPayload.url, {
+          method: "PUT",
+          headers: { "Content-Type": file.type || "video/mp4" },
+          body: file,
+        });
+        if (!upload.ok) throw new Error(`MinIO rechazó la subida de ${file.name}.`);
+
+        uploaded.push({
+          id: signedPayload.id,
+          title: titleFromFilename(file.name),
+          description: "",
+          durationLabel: "",
+          s3Key: signedPayload.key,
+        });
+      }
+
+      setVideos((current) => [...current, ...uploaded]);
+      setMessage(`${uploaded.length} ${uploaded.length === 1 ? "video subido" : "videos subidos"}. Guarda el curso para publicar el orden.`);
+      formElement.reset();
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "No se pudieron subir los videos.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function updateVideo(id: string, field: keyof Pick<CourseVideo, "title" | "description" | "durationLabel">, value: string) {
+    setVideos((current) => current.map((video) => (video.id === id ? { ...video, [field]: value } : video)));
+  }
+
+  function moveVideo(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= videos.length) return;
+    setVideos((current) => {
+      const reordered = [...current];
+      [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+      return reordered;
+    });
+  }
+
+  function removeVideo(id: string) {
+    setVideos((current) => current.filter((video) => video.id !== id));
+    setMessage("Video retirado del curso. Guarda para aplicar el cambio.");
+  }
+
+  async function saveCourse(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+
+    if (!videos.length) {
+      setError("El curso debe tener al menos un video.");
+      return;
+    }
+
+    setSaving(true);
+    const form = new FormData(event.currentTarget);
+    const response = await fetch("/api/admin/course", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: form.get("title"),
+        description: form.get("description"),
+        videos,
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+    setSaving(false);
+
+    if (!response.ok) {
+      setError(payload?.error || "No se pudo guardar el curso.");
+      return;
+    }
+
+    setMessage("Curso y orden de lecciones guardados.");
+  }
+
+  return (
+    <section className="panel course-admin-panel">
+      <div className="panel-header">
+        <div>
+          <h2>Contenido del curso</h2>
+          <p>{videos.length} {videos.length === 1 ? "lección" : "lecciones"}</p>
+        </div>
+      </div>
+      <div className="panel-body course-builder">
+        <form className="multi-upload" onSubmit={uploadVideos}>
+          <div className="field">
+            <label htmlFor="videos">Agregar videos</label>
+            <input id="videos" name="videos" type="file" accept="video/mp4,video/webm,video/quicktime" multiple />
+          </div>
+          <button className="button" disabled={uploading} type="submit">
+            <UploadCloud size={18} />
+            {uploading ? "Subiendo..." : "Subir videos"}
+          </button>
+        </form>
+
+        <form className="course-editor" onSubmit={saveCourse}>
+          <div className="course-meta-fields">
+            <div className="field">
+              <label htmlFor="title">Nombre del curso</label>
+              <input id="title" name="title" defaultValue={course?.title || "Curso principal"} required />
+            </div>
+            <div className="field">
+              <label htmlFor="description">Descripción</label>
+              <textarea id="description" name="description" defaultValue={course?.description || ""} />
+            </div>
+          </div>
+
+          <div className="lesson-admin-list">
+            {videos.map((video, index) => (
+              <article className="lesson-admin-row" key={video.id}>
+                <span className="lesson-order">{index + 1}</span>
+                <div className="lesson-admin-fields">
+                  <div className="field">
+                    <label htmlFor={`video-title-${video.id}`}>Título</label>
+                    <input
+                      id={`video-title-${video.id}`}
+                      value={video.title}
+                      onChange={(event) => updateVideo(video.id, "title", event.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`video-duration-${video.id}`}>Duración visible</label>
+                    <input
+                      id={`video-duration-${video.id}`}
+                      value={video.durationLabel}
+                      onChange={(event) => updateVideo(video.id, "durationLabel", event.target.value)}
+                      placeholder="Ej: 12 min"
+                    />
+                  </div>
+                  <div className="field lesson-description-field">
+                    <label htmlFor={`video-description-${video.id}`}>Descripción</label>
+                    <input
+                      id={`video-description-${video.id}`}
+                      value={video.description}
+                      onChange={(event) => updateVideo(video.id, "description", event.target.value)}
+                      placeholder="Resumen breve de la lección"
+                    />
+                  </div>
+                </div>
+                <div className="lesson-admin-actions">
+                  <button className="icon-button" type="button" onClick={() => moveVideo(index, -1)} disabled={index === 0} aria-label={`Subir ${video.title}`} title="Subir en el orden">
+                    <ArrowUp size={17} />
+                  </button>
+                  <button className="icon-button" type="button" onClick={() => moveVideo(index, 1)} disabled={index === videos.length - 1} aria-label={`Bajar ${video.title}`} title="Bajar en el orden">
+                    <ArrowDown size={17} />
+                  </button>
+                  <button className="icon-button danger" type="button" onClick={() => removeVideo(video.id)} aria-label={`Quitar ${video.title}`} title="Quitar del curso">
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              </article>
+            ))}
+
+            {!videos.length ? (
+              <div className="empty-lessons">
+                <Film size={24} />
+                <p>Sube el primer video para crear la ruta de aprendizaje.</p>
+              </div>
+            ) : null}
+          </div>
+
+          <button className="button secondary save-course-button" disabled={saving} type="submit">
+            <Save size={18} />
+            {saving ? "Guardando..." : "Guardar curso y orden"}
+          </button>
+        </form>
+
+        {message ? <p className="notice course-feedback" role="status">{message}</p> : null}
+        {error ? <p className="notice danger course-feedback" role="alert">{error}</p> : null}
+      </div>
+    </section>
+  );
+}
