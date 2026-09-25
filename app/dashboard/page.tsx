@@ -112,7 +112,7 @@ export default async function DashboardPage() {
               El periodo inicia al reproducir el video por primera vez. La duración fue asignada por el administrador.
             </p>
             <p className="notice compact">
-              Este contenido es personal. La reproducción usa enlaces temporales y una marca de agua asociada a tu cuenta.
+              Este contenido es personal. Cada reproducción valida tu sesión y muestra una marca de agua asociada a tu cuenta.
             </p>
           </div>
         </aside>

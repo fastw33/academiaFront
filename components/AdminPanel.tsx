@@ -21,6 +21,16 @@ type AdminPanelProps = {
   course: Course | null;
 };
 
+type UploadProgress = {
+  fileName: string;
+  fileIndex: number;
+  totalFiles: number;
+  loadedBytes: number;
+  totalBytes: number;
+  percent: number;
+  phase: "preparing" | "uploading" | "processing";
+};
+
 function titleFromFilename(filename: string) {
   return filename
     .replace(/\.[^.]+$/, "")
@@ -28,11 +38,50 @@ function titleFromFilename(filename: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(0.1, bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function uploadFile(
+  url: string,
+  file: File,
+  onProgress: (loaded: number, phase: UploadProgress["phase"]) => void
+) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url);
+    request.setRequestHeader("Content-Type", file.type || "video/mp4");
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, "uploading");
+    };
+    request.upload.onload = () => onProgress(file.size, "processing");
+    request.onerror = () => reject(new Error(`Se interrumpió la carga de ${file.name}.`));
+    request.onabort = () => reject(new Error(`Se canceló la carga de ${file.name}.`));
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve();
+        return;
+      }
+      let detail = "";
+      try {
+        detail = JSON.parse(request.responseText)?.error || "";
+      } catch {
+        detail = "";
+      }
+      reject(new Error(detail || `No se pudo subir ${file.name}.`));
+    };
+    request.send(file);
+  });
+}
+
 export default function AdminPanel({ course }: AdminPanelProps) {
   const [videos, setVideos] = useState<CourseVideo[]>(course?.videos || []);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function uploadVideos(event: FormEvent<HTMLFormElement>) {
@@ -50,9 +99,25 @@ export default function AdminPanel({ course }: AdminPanelProps) {
     setMessage("");
     setUploading(true);
     const uploaded: CourseVideo[] = [];
+    const totalBytes = files.reduce((total, file) => total + file.size, 0);
+    let completedBytes = 0;
 
     try {
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
+        const updateProgress = (loaded: number, phase: UploadProgress["phase"]) => {
+          const loadedBytes = Math.min(totalBytes, completedBytes + loaded);
+          setUploadProgress({
+            fileName: file.name,
+            fileIndex: index + 1,
+            totalFiles: files.length,
+            loadedBytes,
+            totalBytes,
+            percent: Math.round((loadedBytes / totalBytes) * 100),
+            phase,
+          });
+        };
+        updateProgress(0, "preparing");
+
         const signed = await fetch("/api/admin/upload-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -61,12 +126,8 @@ export default function AdminPanel({ course }: AdminPanelProps) {
         const signedPayload = await signed.json().catch(() => null);
         if (!signed.ok) throw new Error(signedPayload?.error || `No se pudo preparar ${file.name}.`);
 
-        const upload = await fetch(signedPayload.url, {
-          method: "PUT",
-          headers: { "Content-Type": file.type || "video/mp4" },
-          body: file,
-        });
-        if (!upload.ok) throw new Error(`No se pudo subir ${file.name}.`);
+        await uploadFile(signedPayload.url, file, updateProgress);
+        completedBytes += file.size;
 
         uploaded.push({
           id: signedPayload.id,
@@ -84,6 +145,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
       setError(uploadError instanceof Error ? uploadError.message : "No se pudieron subir los videos.");
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
@@ -156,6 +218,39 @@ export default function AdminPanel({ course }: AdminPanelProps) {
             <UploadCloud size={18} />
             {uploading ? "Subiendo..." : "Subir videos"}
           </button>
+          {uploadProgress ? (
+            <div className="upload-progress" role="status" aria-live="polite">
+              <div className="upload-progress__summary">
+                <span>
+                  {uploadProgress.phase === "preparing"
+                    ? "Preparando"
+                    : uploadProgress.phase === "processing"
+                      ? "Confirmando guardado"
+                      : "Subiendo"}{" "}
+                  <strong>{uploadProgress.fileName}</strong>
+                </span>
+                <strong className="upload-progress__percent">{uploadProgress.percent}%</strong>
+              </div>
+              <div
+                className="upload-progress__track"
+                role="progressbar"
+                aria-label={`Progreso de carga de ${uploadProgress.fileName}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={uploadProgress.percent}
+              >
+                <span style={{ width: `${uploadProgress.percent}%` }} />
+              </div>
+              <div className="upload-progress__meta">
+                <span>Archivo {uploadProgress.fileIndex} de {uploadProgress.totalFiles}</span>
+                <span>
+                  {uploadProgress.phase === "processing"
+                    ? "Carga enviada. MinIO está finalizando el archivo."
+                    : `${formatBytes(uploadProgress.loadedBytes)} de ${formatBytes(uploadProgress.totalBytes)}`}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </form>
 
         <form className="course-editor" onSubmit={saveCourse}>

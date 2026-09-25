@@ -822,6 +822,62 @@ a:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
+.upload-progress {
+  grid-column: 1 / -1;
+  padding: 14px 16px;
+  border: 1px solid #d8e5ef;
+  border-left: 3px solid var(--blue);
+  border-radius: 8px;
+  background: #f7fafc;
+}
+
+.upload-progress__summary,
+.upload-progress__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.upload-progress__summary {
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.upload-progress__summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-progress__percent {
+  min-width: 3.5ch;
+  color: var(--orange);
+  text-align: right;
+}
+
+.upload-progress__track {
+  overflow: hidden;
+  height: 8px;
+  margin: 10px 0 8px;
+  border-radius: 4px;
+  background: #dfe7ed;
+}
+
+.upload-progress__track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--orange);
+  transition: width 180ms ease-out;
+}
+
+.upload-progress__meta {
+  color: var(--text-gray);
+  font-size: 0.75rem;
+}
+
 .multi-upload .field,
 .course-meta-fields .field,
 .lesson-admin-fields .field {
