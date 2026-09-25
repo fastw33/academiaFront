@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ArrowDown, ArrowUp, Film, Gauge, RefreshCw, Save, Trash2, UploadCloud } from "lucide-react";
+import { ArrowDown, ArrowUp, FileQuestion, Film, Gauge, RefreshCw, Save, Trash2, UploadCloud } from "lucide-react";
+import QuizEditor, { type LessonQuiz } from "@/components/QuizEditor";
 
 type CourseVideo = {
   id: string;
@@ -9,6 +10,7 @@ type CourseVideo = {
   description: string;
   s3Key: string;
   durationLabel: string;
+  quiz: LessonQuiz | null;
 };
 
 type Course = {
@@ -128,6 +130,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [saving, setSaving] = useState(false);
   const [optimizingVideo, setOptimizingVideo] = useState<{ id: string; progress: number } | null>(null);
+  const [expandedQuizId, setExpandedQuizId] = useState<string | null>(null);
 
   async function uploadVideos(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -190,6 +193,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
           description: "",
           durationLabel: "",
           s3Key: optimized.optimizedKey || signedPayload.key,
+          quiz: null,
         });
       }
 
@@ -229,6 +233,10 @@ export default function AdminPanel({ course }: AdminPanelProps) {
     setVideos((current) => current.map((video) => (video.id === id ? { ...video, [field]: value } : video)));
   }
 
+  function updateQuiz(id: string, quiz: LessonQuiz | null) {
+    setVideos((current) => current.map((video) => (video.id === id ? { ...video, quiz } : video)));
+  }
+
   function moveVideo(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= videos.length) return;
@@ -251,6 +259,21 @@ export default function AdminPanel({ course }: AdminPanelProps) {
 
     if (!videos.length) {
       setError("El curso debe tener al menos un video.");
+      return;
+    }
+
+    const invalidQuiz = videos.find((video) => video.quiz && (
+      video.quiz.questions.length < 5
+      || video.quiz.questions.length > 6
+      || video.quiz.questions.some((question) => (
+        question.prompt.trim().length < 3
+        || question.options.length !== 4
+        || question.options.some((option) => !option.trim())
+      ))
+    ));
+    if (invalidQuiz) {
+      setExpandedQuizId(invalidQuiz.id);
+      setError(`Completa las preguntas y las cuatro opciones de la evaluación de "${invalidQuiz.title}".`);
       return;
     }
 
@@ -389,6 +412,16 @@ export default function AdminPanel({ course }: AdminPanelProps) {
                   >
                     {optimizingVideo?.id === video.id ? <RefreshCw className="spin" size={17} /> : <Gauge size={17} />}
                   </button>
+                  <button
+                    className={`icon-button ${video.quiz ? "success" : ""}`}
+                    type="button"
+                    onClick={() => setExpandedQuizId((current) => current === video.id ? null : video.id)}
+                    aria-expanded={expandedQuizId === video.id}
+                    aria-label={`${video.quiz ? "Editar" : "Crear"} evaluación de ${video.title}`}
+                    title={video.quiz ? "Editar evaluación" : "Crear evaluación"}
+                  >
+                    <FileQuestion size={17} />
+                  </button>
                   <button className="icon-button" type="button" onClick={() => moveVideo(index, -1)} disabled={index === 0} aria-label={`Subir ${video.title}`} title="Subir en el orden">
                     <ArrowUp size={17} />
                   </button>
@@ -403,6 +436,13 @@ export default function AdminPanel({ course }: AdminPanelProps) {
                   <span className="lesson-optimization-status" role="status">
                     Preparando streaming {optimizingVideo.progress}%
                   </span>
+                ) : null}
+                {expandedQuizId === video.id ? (
+                  <QuizEditor
+                    lessonTitle={video.title}
+                    quiz={video.quiz}
+                    onChange={(quiz) => updateQuiz(video.id, quiz)}
+                  />
                 ) : null}
               </article>
             ))}

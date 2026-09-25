@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, CirclePlay, ListVideo, Lock, PlayCircle, RefreshCw } from "lucide-react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, CirclePlay, ClipboardCheck, ListVideo, Lock, PlayCircle, RefreshCw, RotateCcw, Send } from "lucide-react";
 import Hls from "hls.js";
 
 type Lesson = {
@@ -9,18 +9,32 @@ type Lesson = {
   title: string;
   description: string;
   durationLabel: string;
+  quiz: null | {
+    passingScore: number;
+    questions: Array<{ id: string; prompt: string; options: string[] }>;
+  };
 };
 
 type VideoPlayerProps = {
   videos: Lesson[];
   initialCompletedVideoIds: string[];
+  initialWatchedVideoIds: string[];
   isAdmin: boolean;
   watermark: string;
 };
 
-export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin, watermark }: VideoPlayerProps) {
+type QuizResult = {
+  score: number;
+  passed: boolean;
+  correct: number;
+  total: number;
+  passingScore: number;
+};
+
+export default function VideoPlayer({ videos, initialCompletedVideoIds, initialWatchedVideoIds, isAdmin, watermark }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [completedIds, setCompletedIds] = useState(initialCompletedVideoIds);
+  const [watchedIds, setWatchedIds] = useState(initialWatchedVideoIds);
   const firstAvailable = useMemo(() => {
     if (isAdmin) return videos[0]?.id || "";
     return videos.find((video, index) => !completedIds.includes(video.id) && videos.slice(0, index).every((previous) => completedIds.includes(previous.id)))?.id
@@ -34,12 +48,25 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
   const [loading, setLoading] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [quizVisible, setQuizVisible] = useState(false);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
+  const [quizError, setQuizError] = useState("");
+  const [submittingQuiz, setSubmittingQuiz] = useState(false);
   const selectedIndex = videos.findIndex((video) => video.id === selectedId);
   const selected = videos[selectedIndex] || videos[0];
+  const selectedQuizReady = Boolean(selected?.quiz && (watchedIds.includes(selected.id) || completedIds.includes(selected.id)));
 
   function isUnlocked(index: number) {
     return isAdmin || videos.slice(0, index).every((video) => completedIds.includes(video.id));
   }
+
+  useEffect(() => {
+    setQuizVisible(selectedQuizReady);
+    setQuizAnswers({});
+    setQuizResult(null);
+    setQuizError("");
+  }, [selectedId, selectedQuizReady]);
 
   useEffect(() => {
     if (!selected?.id) return;
@@ -161,8 +188,53 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
     }
 
     const updated = payload.completedVideoIds as string[];
+    setWatchedIds((current) => current.includes(selected.id) ? current : [...current, selected.id]);
     setCompletedIds(updated);
+    if (payload.requiresQuiz) {
+      setQuizVisible(true);
+      setQuizError("");
+      return;
+    }
     if (selectedIndex < videos.length - 1) setSelectedId(videos[selectedIndex + 1].id);
+  }
+
+  async function submitQuiz(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected?.quiz || submittingQuiz) return;
+    if (Object.keys(quizAnswers).length !== selected.quiz.questions.length) {
+      setQuizError("Responde todas las preguntas antes de calificar.");
+      return;
+    }
+
+    setSubmittingQuiz(true);
+    setQuizError("");
+    const response = await fetch("/api/video/quiz", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        videoId: selected.id,
+        answers: selected.quiz.questions.map((question) => ({
+          questionId: question.id,
+          optionIndex: quizAnswers[question.id],
+        })),
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+    setSubmittingQuiz(false);
+
+    if (!response.ok) {
+      setQuizError(payload?.error || "No se pudo calificar la evaluación.");
+      return;
+    }
+
+    setQuizResult(payload as QuizResult);
+    setCompletedIds(payload.completedVideoIds || completedIds);
+  }
+
+  function retryQuiz() {
+    setQuizAnswers({});
+    setQuizResult(null);
+    setQuizError("");
   }
 
   function chooseLesson(index: number) {
@@ -225,6 +297,73 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
 
         {selected?.description ? <p className="lesson-description">{selected.description}</p> : null}
         {error ? <p className="notice danger">{error}</p> : null}
+
+        {selected?.quiz && !completedIds.includes(selected.id) ? (
+          quizVisible ? (
+            <form className="lesson-quiz" onSubmit={submitQuiz}>
+              <div className="lesson-quiz-header">
+                <div>
+                  <span className="eyebrow"><ClipboardCheck size={15} /> Evaluación de la lección</span>
+                  <h3>Demuestra lo aprendido</h3>
+                  <p>Necesitas al menos {selected.quiz.passingScore}% para habilitar la siguiente lección.</p>
+                </div>
+                <strong>{selected.quiz.questions.length} preguntas</strong>
+              </div>
+
+              {quizResult ? (
+                <div className={`quiz-result ${quizResult.passed ? "is-passed" : "is-failed"}`} role="status">
+                  {quizResult.passed ? <CheckCircle2 size={26} /> : <RotateCcw size={26} />}
+                  <div>
+                    <strong>{quizResult.passed ? "Evaluación aprobada" : "Aún no alcanzas la nota"}</strong>
+                    <span>{quizResult.score}% · {quizResult.correct} de {quizResult.total} respuestas correctas</span>
+                  </div>
+                  {!quizResult.passed ? (
+                    <button className="button ghost" type="button" onClick={retryQuiz}>
+                      <RotateCcw size={16} /> Intentar de nuevo
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <>
+                  <div className="student-question-list">
+                    {selected.quiz.questions.map((question, questionIndex) => (
+                      <fieldset className="student-question" key={question.id}>
+                        <legend><span>{questionIndex + 1}</span>{question.prompt}</legend>
+                        <div className="student-options">
+                          {question.options.map((option, optionIndex) => (
+                            <label
+                              className={`student-option ${quizAnswers[question.id] === optionIndex ? "is-selected" : ""}`}
+                              key={`${question.id}-${optionIndex}`}
+                            >
+                              <input
+                                type="radio"
+                                name={`answer-${question.id}`}
+                                checked={quizAnswers[question.id] === optionIndex}
+                                onChange={() => setQuizAnswers((current) => ({ ...current, [question.id]: optionIndex }))}
+                              />
+                              <span>{String.fromCharCode(65 + optionIndex)}</span>
+                              <strong>{option}</strong>
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    ))}
+                  </div>
+                  {quizError ? <p className="notice danger" role="alert">{quizError}</p> : null}
+                  <button className="button quiz-submit" type="submit" disabled={submittingQuiz}>
+                    <Send size={17} /> {submittingQuiz ? "Calificando..." : "Calificar evaluación"}
+                  </button>
+                </>
+              )}
+            </form>
+          ) : (
+            <p className="notice compact quiz-locked-note">
+              <Lock size={16} /> Finaliza el video para habilitar la evaluación de esta lección.
+            </p>
+          )
+        ) : selected?.quiz && completedIds.includes(selected.id) ? (
+          <p className="notice compact quiz-passed-note"><CheckCircle2 size={16} /> Evaluación aprobada.</p>
+        ) : null}
 
         <div className="lesson-navigation">
           <button className="button ghost" type="button" disabled={selectedIndex <= 0} onClick={() => chooseLesson(selectedIndex - 1)}>

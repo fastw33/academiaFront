@@ -11,17 +11,28 @@ type DashboardData = {
   course: null | {
     title: string;
     description: string;
-    videos: Array<{ id: string; title: string; description: string; durationLabel: string; order: number }>;
+    videos: Array<{
+      id: string;
+      title: string;
+      description: string;
+      durationLabel: string;
+      order: number;
+      quiz: null | {
+        passingScore: number;
+        questions: Array<{ id: string; prompt: string; options: string[] }>;
+      };
+    }>;
   };
   access: { active: boolean; remainingDays: number };
   completedVideoIds: string[];
+  watchedVideoIds: string[];
 };
 
 export default async function DashboardPage() {
   const response = await serverApi("/api/course");
   if (response.status === 401) redirect("/login");
   if (!response.ok) throw new Error("No se pudo cargar el curso.");
-  const { user, course, access, completedVideoIds } = await response.json() as DashboardData;
+  const { user, course, access, completedVideoIds, watchedVideoIds } = await response.json() as DashboardData;
   const videos = course?.videos || [];
   const canWatch = user.role === "admin" || access.active;
 
@@ -73,8 +84,10 @@ export default async function DashboardPage() {
                   title: video.title,
                   description: video.description,
                   durationLabel: video.durationLabel,
+                  quiz: video.quiz,
                 }))}
                 initialCompletedVideoIds={completedVideoIds}
+                initialWatchedVideoIds={watchedVideoIds}
                 isAdmin={user.role === "admin"}
                 watermark={user.email}
               />

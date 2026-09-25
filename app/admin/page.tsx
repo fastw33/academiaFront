@@ -5,11 +5,12 @@ import UserManager from "@/components/UserManager";
 import LogoutButton from "@/components/LogoutButton";
 import { serverApi } from "@/lib/server-api";
 import { redirect } from "next/navigation";
+import type { LessonQuiz } from "@/components/QuizEditor";
 
 type AdminCourse = {
   title: string;
   description: string;
-  videos: Array<{ id: string; title: string; description: string; s3Key: string; durationLabel: string }>;
+  videos: Array<{ id: string; title: string; description: string; s3Key: string; durationLabel: string; quiz: LessonQuiz | null }>;
 };
 
 type AdminUser = {
@@ -69,6 +70,7 @@ export default async function AdminPage() {
                   description: video.description,
                   s3Key: video.s3Key,
                   durationLabel: video.durationLabel,
+                  quiz: video.quiz || null,
                 })),
               }
             : null
