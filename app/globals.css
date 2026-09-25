@@ -313,6 +313,33 @@ h3 {
   gap: 20px;
 }
 
+.dashboard-shell .topbar,
+.dashboard-shell .page-heading,
+.dashboard-shell .grid {
+  width: min(1500px, calc(100% - 40px));
+}
+
+.dashboard-shell .grid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: 24px;
+}
+
+.dashboard-shell .course-player {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard-shell .lesson-sidebar {
+  border-top: 1px solid var(--line);
+  border-left: 0;
+  padding-top: 22px;
+  padding-left: 0;
+}
+
+.dashboard-shell .lesson-list {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .admin-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -723,17 +750,36 @@ a:focus-visible {
   font-style: normal;
 }
 
-.watermark {
+.watermark-layer {
   position: absolute;
-  right: 14px;
-  bottom: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
-  padding: 6px 8px;
-  background: rgba(0, 0, 0, 0.48);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 0.72rem;
+  z-index: 2;
+  inset: 0 0 58px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  place-items: center;
+  overflow: hidden;
+  padding: 20px;
   pointer-events: none;
+  animation: watermark-drift 16s ease-in-out infinite;
+}
+
+.watermark-layer span {
+  max-width: 92%;
+  transform: rotate(-16deg);
+  color: rgba(255, 255, 255, 0.34);
+  font-family: var(--font-title);
+  font-size: clamp(0.56rem, 0.72vw, 0.76rem);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  user-select: none;
+}
+
+@keyframes watermark-drift {
+  0%, 100% { transform: translate3d(-6px, 4px, 0); }
+  50% { transform: translate3d(10px, -7px, 0); }
 }
 
 .notice {
@@ -1187,6 +1233,10 @@ a:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-shell .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .course-player {
     grid-template-columns: 1fr;
   }
@@ -1277,6 +1327,21 @@ a:focus-visible {
     width: min(100% - 28px, 1220px);
   }
 
+  .dashboard-shell .topbar,
+  .dashboard-shell .page-heading,
+  .dashboard-shell .grid {
+    width: min(100% - 28px, 1500px);
+  }
+
+  .watermark-layer {
+    bottom: 48px;
+    grid-template-columns: 1fr;
+  }
+
+  .watermark-layer span:nth-child(even) {
+    display: none;
+  }
+
   .brand > img {
     width: 104px;
   }
@@ -1346,6 +1411,12 @@ a:focus-visible {
 
   .field-days {
     max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watermark-layer {
+    animation: none;
   }
 }
 

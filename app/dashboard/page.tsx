@@ -26,7 +26,7 @@ export default async function DashboardPage() {
   const canWatch = user.role === "admin" || access.active;
 
   return (
-    <main className="shell">
+    <main className="shell dashboard-shell">
       <header className="topbar">
         <div className="brand">
           <Image src="/brand/fastway-logo.webp" alt="Fastway" width={148} height={101} priority />

@@ -19,6 +19,7 @@ type VideoPlayerProps = {
 
 export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin, watermark }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [watermarkTime, setWatermarkTime] = useState("");
   const [completedIds, setCompletedIds] = useState(initialCompletedVideoIds);
   const firstAvailable = useMemo(() => {
     if (isAdmin) return videos[0]?.id || "";
@@ -79,6 +80,17 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
+  useEffect(() => {
+    const formatter = new Intl.DateTimeFormat("es-CO", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+    const updateTime = () => setWatermarkTime(formatter.format(new Date()));
+    updateTime();
+    const interval = window.setInterval(updateTime, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   async function completeLesson() {
     if (!selected || completing || completedIds.includes(selected.id)) {
       if (selectedIndex < videos.length - 1 && isUnlocked(selectedIndex + 1)) setSelectedId(videos[selectedIndex + 1].id);
@@ -131,12 +143,16 @@ export default function VideoPlayer({ videos, initialCompletedVideoIds, isAdmin,
                 src={src}
                 title={selected.title}
                 controls
-                controlsList="nodownload noplaybackrate noremoteplayback"
+                controlsList="nodownload nofullscreen noplaybackrate noremoteplayback"
                 disablePictureInPicture
                 playsInline
                 onEnded={completeLesson}
               />
-              <span className="watermark">{watermark}</span>
+              <div className="watermark-layer" aria-hidden="true">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <span key={index}>{watermark}{watermarkTime ? ` · ${watermarkTime}` : ""}</span>
+                ))}
+              </div>
             </>
           ) : (
             <div className="video-placeholder">
