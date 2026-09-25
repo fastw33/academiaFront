@@ -1,6 +1,7 @@
 "use client";
 
 import { ClipboardCheck, Plus, Trash2 } from "lucide-react";
+import { useId } from "react";
 
 export type QuizQuestion = {
   id: string;
@@ -31,12 +32,14 @@ function emptyQuestion(): QuizQuestion {
 
 export function createEmptyQuiz(): LessonQuiz {
   return {
-    passingScore: 90,
+    passingScore: 70,
     questions: Array.from({ length: 5 }, emptyQuestion),
   };
 }
 
 export default function QuizEditor({ lessonTitle, quiz, onChange }: QuizEditorProps) {
+  const passingScoreId = useId();
+
   if (!quiz) {
     return (
       <div className="quiz-editor quiz-editor-empty">
@@ -82,9 +85,27 @@ export default function QuizEditor({ lessonTitle, quiz, onChange }: QuizEditorPr
           <span className="eyebrow">Evaluación obligatoria</span>
           <h3>{activeQuiz.questions.length} preguntas · aprobación {activeQuiz.passingScore}%</h3>
         </div>
-        <button className="text-button danger" type="button" onClick={() => onChange(null)}>
-          <Trash2 size={16} /> Quitar evaluación
-        </button>
+        <div className="quiz-editor-settings">
+          <label htmlFor={passingScoreId}>Porcentaje para aprobar</label>
+          <div className="quiz-passing-score">
+            <input
+              id={passingScoreId}
+              type="number"
+              min={1}
+              max={100}
+              step={1}
+              value={activeQuiz.passingScore}
+              onChange={(event) => onChange({ ...activeQuiz, passingScore: Number(event.target.value) })}
+              aria-describedby={`${passingScoreId}-help`}
+              required
+            />
+            <span aria-hidden="true">%</span>
+          </div>
+          <small id={`${passingScoreId}-help`}>Valor entre 1 y 100</small>
+          <button className="text-button danger" type="button" onClick={() => onChange(null)}>
+            <Trash2 size={16} /> Quitar evaluación
+          </button>
+        </div>
       </div>
 
       <div className="quiz-question-list">

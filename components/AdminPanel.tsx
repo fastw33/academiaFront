@@ -268,7 +268,10 @@ export default function AdminPanel({ course }: AdminPanelProps) {
     }
 
     const invalidQuiz = videos.find((video) => video.quiz && (
-      video.quiz.questions.length < 5
+      !Number.isInteger(video.quiz.passingScore)
+      || video.quiz.passingScore < 1
+      || video.quiz.passingScore > 100
+      || video.quiz.questions.length < 5
       || video.quiz.questions.length > 6
       || video.quiz.questions.some((question) => (
         question.prompt.trim().length < 3
@@ -278,7 +281,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
     ));
     if (invalidQuiz) {
       setExpandedQuizId(invalidQuiz.id);
-      setError(`Completa las preguntas y las cuatro opciones de la evaluación de "${invalidQuiz.title}".`);
+      setError(`Revisa el porcentaje de aprobación, las preguntas y las opciones de la evaluación de "${invalidQuiz.title}".`);
       return;
     }
 

@@ -1425,6 +1425,49 @@ a:focus-visible {
   font-size: 0.96rem;
 }
 
+.quiz-editor-settings {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: end;
+  gap: 4px 10px;
+}
+
+.quiz-editor-settings > label {
+  color: var(--text-gray);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.quiz-passing-score {
+  display: grid;
+  grid-template-columns: 64px auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.quiz-passing-score input {
+  width: 64px;
+  min-height: 38px;
+  padding: 7px 8px;
+  text-align: center;
+}
+
+.quiz-passing-score span {
+  color: var(--blue-dark);
+  font-weight: 800;
+}
+
+.quiz-editor-settings > small {
+  grid-column: 1 / -1;
+  color: var(--text-gray);
+  font-size: 0.68rem;
+}
+
+.quiz-editor-settings > .text-button {
+  grid-column: 1 / -1;
+}
+
 .text-button {
   display: inline-flex;
   align-items: center;
@@ -2101,6 +2144,10 @@ a:focus-visible {
 
   .quiz-editor {
     grid-column: 1 / -1;
+  }
+
+  .quiz-editor-settings {
+    justify-items: start;
   }
 
   .quiz-option-editor-list {
