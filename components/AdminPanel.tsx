@@ -323,7 +323,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
                 <span>Archivo {uploadProgress.fileIndex} de {uploadProgress.totalFiles}</span>
                 <span>
                   {uploadProgress.phase === "optimizing"
-                    ? "Creando calidades 360p, 720p y 1080p."
+                    ? "Creando calidades 360p y 720p."
                     : uploadProgress.phase === "processing"
                     ? "Carga enviada. MinIO está finalizando el archivo."
                     : `${formatBytes(uploadProgress.loadedBytes)} de ${formatBytes(uploadProgress.totalBytes)}`}
