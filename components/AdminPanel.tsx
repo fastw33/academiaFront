@@ -14,6 +14,7 @@ type CourseVideo = {
 };
 
 type Course = {
+  id: string;
   title: string;
   description: string;
   videos: CourseVideo[];
@@ -172,7 +173,11 @@ export default function AdminPanel({ course }: AdminPanelProps) {
         const signed = await fetch("/api/admin/upload-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, contentType: file.type || "video/mp4" }),
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type || "video/mp4",
+            courseId: course?.id,
+          }),
         });
         const signedPayload = await signed.json().catch(() => null);
         if (!signed.ok) throw new Error(signedPayload?.error || `No se pudo preparar ${file.name}.`);
@@ -279,7 +284,7 @@ export default function AdminPanel({ course }: AdminPanelProps) {
 
     setSaving(true);
     const form = new FormData(event.currentTarget);
-    const response = await fetch("/api/admin/course", {
+    const response = await fetch(`/api/admin/course?courseId=${encodeURIComponent(course?.id || "")}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

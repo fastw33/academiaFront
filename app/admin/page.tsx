@@ -1,37 +1,37 @@
 import Link from "next/link";
 import Image from "next/image";
 import AdminPanel from "@/components/AdminPanel";
-import UserManager from "@/components/UserManager";
+import UserManager, { type ManagedUser } from "@/components/UserManager";
+import CourseManager, { type CourseSummary } from "@/components/CourseManager";
 import LogoutButton from "@/components/LogoutButton";
 import { serverApi } from "@/lib/server-api";
 import { redirect } from "next/navigation";
 import type { LessonQuiz } from "@/components/QuizEditor";
 
 type AdminCourse = {
+  id: string;
   title: string;
   description: string;
   videos: Array<{ id: string; title: string; description: string; s3Key: string; durationLabel: string; quiz: LessonQuiz | null }>;
 };
 
-type AdminUser = {
-  id: string;
-  name: string;
-  email: string;
-  accessDurationDays: number;
-  accessStartsAt: string | null;
-  blocked: boolean;
-};
-
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ courseId?: string }> }) {
+  const params = await searchParams;
+  const coursesResponse = await serverApi("/api/admin/courses");
+  if (coursesResponse.status === 401) redirect("/login");
+  if (coursesResponse.status === 403) redirect("/dashboard");
+  if (!coursesResponse.ok) throw new Error("No se pudo cargar el catálogo de cursos.");
+  const { courses } = await coursesResponse.json() as { courses: CourseSummary[] };
+  const selectedCourseId = courses.some((course) => course.id === params.courseId)
+    ? params.courseId as string
+    : courses[0]?.id || "";
   const [courseResponse, usersResponse] = await Promise.all([
-    serverApi("/api/admin/course"),
+    serverApi(`/api/admin/course${selectedCourseId ? `?courseId=${encodeURIComponent(selectedCourseId)}` : ""}`),
     serverApi("/api/admin/users"),
   ]);
-  if (courseResponse.status === 401 || usersResponse.status === 401) redirect("/login");
-  if (courseResponse.status === 403 || usersResponse.status === 403) redirect("/dashboard");
   if (!courseResponse.ok || !usersResponse.ok) throw new Error("No se pudo cargar la administración.");
   const { course } = await courseResponse.json() as { course: AdminCourse | null };
-  const { users } = await usersResponse.json() as { users: AdminUser[] };
+  const { users } = await usersResponse.json() as { users: ManagedUser[] };
 
   return (
     <main className="shell">
@@ -58,10 +58,14 @@ export default async function AdminPage() {
         </div>
       </section>
 
+      <CourseManager courses={courses} selectedCourseId={selectedCourseId} />
+
       <AdminPanel
+        key={course?.id || "empty-course"}
         course={
           course
             ? {
+                id: course.id,
                 title: course.title,
                 description: course.description || "",
                 videos: course.videos.map((video) => ({

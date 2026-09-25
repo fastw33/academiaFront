@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Clock3, ShieldCheck } from "lucide-react";
+import { BookOpen, Clock3, ShieldCheck } from "lucide-react";
 import LogoutButton from "@/components/LogoutButton";
 import VideoPlayer from "@/components/VideoPlayer";
 import { serverApi } from "@/lib/server-api";
@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 type DashboardData = {
   user: { name: string; email: string; role: "student" | "admin" };
   course: null | {
+    id: string;
     title: string;
     description: string;
     videos: Array<{
@@ -35,13 +36,15 @@ type DashboardData = {
   access: { active: boolean; remainingDays: number };
   completedVideoIds: string[];
   watchedVideoIds: string[];
+  courses: Array<{ id: string; title: string; description: string; lessonCount: number; active: boolean }>;
 };
 
-export default async function DashboardPage() {
-  const response = await serverApi("/api/course");
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ courseId?: string }> }) {
+  const params = await searchParams;
+  const response = await serverApi(`/api/course${params.courseId ? `?courseId=${encodeURIComponent(params.courseId)}` : ""}`);
   if (response.status === 401) redirect("/login");
   if (!response.ok) throw new Error("No se pudo cargar el curso.");
-  const { user, course, access, completedVideoIds, watchedVideoIds } = await response.json() as DashboardData;
+  const { user, course, access, completedVideoIds, watchedVideoIds, courses } = await response.json() as DashboardData;
   const videos = course?.videos || [];
   const canWatch = user.role === "admin" || access.active;
 
@@ -74,6 +77,17 @@ export default async function DashboardPage() {
         </span>
       </section>
 
+      {courses.length > 1 ? (
+        <nav className="learner-course-tabs" aria-label="Mis cursos">
+          {courses.map((item) => (
+            <Link className={item.id === course?.id ? "is-active" : ""} href={`/dashboard?courseId=${encodeURIComponent(item.id)}`} key={item.id}>
+              <BookOpen size={16} />
+              <span><strong>{item.title}</strong><small>{item.lessonCount} módulos</small></span>
+            </Link>
+          ))}
+        </nav>
+      ) : null}
+
       <section className="grid">
         <div className="panel">
           <div className="panel-header">
@@ -88,6 +102,7 @@ export default async function DashboardPage() {
               <p className="notice danger">Aún no hay lecciones configuradas. Entra al panel admin y sube los videos.</p>
             ) : canWatch ? (
               <VideoPlayer
+                key={course.id}
                 videos={videos.map((video) => ({
                   id: video.id,
                   title: video.title,
