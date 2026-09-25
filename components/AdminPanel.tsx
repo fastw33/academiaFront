@@ -32,7 +32,7 @@ type UploadProgress = {
 };
 
 type OptimizationJob = {
-  status: "queued" | "processing" | "uploading" | "done" | "failed";
+  status: "queued" | "downloading" | "processing" | "uploading" | "done" | "failed";
   progress: number;
   optimizedKey: string | null;
   optimizedBytes: number | null;
